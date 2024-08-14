@@ -16,6 +16,8 @@ let bMacroLoop = false;
 /*let rawdata = fs.readFileSync('settings.json');
 let settings = JSON.parse(rawdata);
 */
+let inTransition = false;
+let inFTB = false
 
 const { Atem } = require('atem-connection')
 const myAtem = new Atem();
@@ -23,25 +25,22 @@ const myAtem = new Atem();
 myAtem.on('info', console.log)
 myAtem.on('error', console.error)
  
-
- 
 myAtem.on('connected', () => {
     console.log("Atem connected")
     macroList = BuildUsedMacros(myAtem.state);
     TPClient.choiceUpdate("availble_macros", macroList.map(function(item){return item.name;}))
     let states=[];
-    //if(myAtem.state.macro.macroPlayer.isRunning){
-        states.push({id:"ATEM_RUNNING_MACRO", value: myAtem.state.macro.macroProperties[myAtem.state.macro.macroPlayer.macroIndex] || ""});
-        bIsRunning = myAtem.state.macro.macroPlayer.isRunning;
-        bIsWaiting = myAtem.state.macro.macroPlayer.isWaiting;
-        states.push({id:"ATEM_MACRO_IS_RUNNING", value:`${bIsRunning && !bIsWaiting}`});
-    //}
+
+    states.push({id:"ATEM_RUNNING_MACRO", value: myAtem.state.macro.macroProperties[myAtem.state.macro.macroPlayer.macroIndex] || ""});
+    bIsRunning = myAtem.state.macro.macroPlayer.isRunning;
+    bIsWaiting = myAtem.state.macro.macroPlayer.isWaiting;
+    states.push({id:"ATEM_MACRO_IS_RUNNING", value:`${bIsRunning && !bIsWaiting}`});
     
     bMacroLoop = myAtem.state.macro.macroPlayer.loop;
     states.push({id:"ATEM_MACRO_LOOP", value:`${bMacroLoop}`})
     TPClient.stateUpdateMany(states);  
-    //TPClient.choiceUpdate("ATEM_RUNNING_MACRO", macroList.map(function(item){return item.name;}))
 })
+
 function BuildUsedMacros(state){
     let usedMacros = [];
     for(let i = 0; i<100; i++){
@@ -55,21 +54,22 @@ function BuildUsedMacros(state){
     }
     return usedMacros;
 } 
-myAtem.on('stateChanged', (state, pathsToChange) => {
-    //macroList = BuildUsedMacros(state);
-    console.log("atem state change:")
-    console.log(state) // catch the ATEM state.
-    console.log(pathsToChange);
-    let states = [];
-    // loop through each program change and update the plugin states appropriately
-    let stateObj = {
 
-    }
+myAtem.on('stateChanged', async (state, pathsToChange) => {
+    let states = [];
+    let stateObj = {}
+
+    // console.log(state.video.mixEffects[0].transitionPosition.inTransition)
+
+    // if (!state.video.mixEffects[0].transitionPosition.inTransition) {
+    //     console.log('Transition is not in progress')
+    //     TPClient.stateUpdate("ATEM_FTB", "false")
+    // }
+
     for(programChange of pathsToChange){
         if(programChange.indexOf("programInput") > 0){
             //program change
             let newProgram = objectPath.get(state,programChange);
-            console.log("sending state to tp: ATEM_SOURCE = " + newProgram)
             stateObj.ATEM_SOURCE = newProgram.toString();
         }
         if(programChange.indexOf("macroProperties") > 0){
@@ -82,24 +82,25 @@ myAtem.on('stateChanged', (state, pathsToChange) => {
             if(macro.isRunning){
                 // start macro
                 runningMacro = macroList.find((item)=>item.index == macro.macroIndex);
-                console.log("sending state to tp: ATEM_RUNNING_MACRO = " + runningMacro.name)
                 stateObj.ATEM_RUNNING_MACRO=runningMacro.name;
             }
             if(!macro.isRunning && !macro.isWaiting){
                 //stop macro
                 runningMacro = null;
-                console.log("sending state to tp: ATEM_RUNNING_MACRO = " )
                 stateObj.ATEM_RUNNING_MACRO = "";
             }
         }
     }
+
     for(prop in stateObj){
         states.push({id:prop,value:stateObj[prop]});
     }
+
     if(bMacroLoop != myAtem.state.macro.macroPlayer.loop){
         bMacroLoop = myAtem.state.macro.macroPlayer.loop;
         states.push({id:"ATEM_MACRO_LOOP",value:`${bMacroLoop}`})
     }
+
     if(bIsRunning != myAtem.state.macro.macroPlayer.isRunning || bIsWaiting != myAtem.state.macro.macroPlayer.isWaiting){
         bIsRunning = myAtem.state.macro.macroPlayer.isRunning;
         bIsWaiting = myAtem.state.macro.macroPlayer.isWaiting;
@@ -108,56 +109,57 @@ myAtem.on('stateChanged', (state, pathsToChange) => {
     
     if(states.length == 0) return; // no real states we care about so don't send the updates of the atem
     
-    console.log(states);
     if(states.length > 0) TPClient.stateUpdateMany(states);  
-    
 })
 
-// Dynamic Actions Documentation: https://www.touch-portal.com/api/index.php?section=dynamic-actions
-
 // Receive an Action Call from Touch Portal
-TPClient.on("Action", (data) => {
-
-    //An action was triggered, handle it here
-    /*
-        {
-            "type":"action",
-            "pluginId":"id of the plugin",
-            "actionId":"id of the action",
-            "data": [
-                {
-                "id":"data object id",
-                "value":"user specified data object value",
-                },
-                {
-                "id":"data object id",
-                "value":"user specified data object value",
-                }
-            ]
-        }
-    */
-   console.log(data);
-   if(data.actionId == "ATEM_SWITCH_SRC"){
-       let newSource = parseInt(data.data[0].value);
-        myAtem.changeProgramInput(newSource).then(() => {
-            // Fired once the atem has acknowledged the command
-            // Note: the state likely hasnt updated yet, but will follow shortly
-            console.log('Program input set to ' + newSource);
-            // Once your action is done, send a State Update back to Touch Portal
-            let states=[
-                {id: "ATEM_SOURCE", value: newSource}
-            ];
-            TPClient.stateUpdateMany(states);
-               
+TPClient.on("Action", async (data) => {
+    if(data.actionId == "ATEM_SWITCH_SRC"){
+        let newSource = parseInt(data.data[0].value);
+        await myAtem.changeProgramInput(newSource).then(() => {
+            TPClient.stateUpdate("ATEM_SOURCE", newSource);
         })
    }
+
+   if(data.actionId == "ATEM_SWITCH_PVW"){
+        let newPreview = parseInt(data.data[0].value);
+        await myAtem.changePreviewInput(newPreview).then(() => {
+            TPClient.stateUpdate("ATEM_PVW", newPreview);
+        })
+    }
+
+    if (data.actionId == "ATEM_AUTO_TRANSITION") {
+        await myAtem.autoTransition(0)
+        TPClient.stateUpdate("ATEM_TRANSITION_STATE", "true");
+        await waitForStateEnd("transition")
+        const states = [
+            { id: "ATEM_TRANSITION_STATE", value: "false" },
+            { id: "ATEM_PVW", value: myAtem.state.video.mixEffects[0].previewInput }
+        ]
+        TPClient.stateUpdateMany(states)
+    }
+
+    if (data.actionId == "ATEM_CUT") {
+        await myAtem.cut() 
+        TPClient.stateUpdate("ATEM_PVW", myAtem.state.video.mixEffects[0].previewInput);
+    }
+    
+
+    if (data.actionId == "ATEM_FTB") {
+        await myAtem.fadeToBlack()
+        TPClient.stateUpdate("ATEM_FTB", "true");
+        await waitForStateEnd("FTB");
+        TPClient.stateUpdate("ATEM_FTB", "false")
+    }
+    
+
    if(data.actionId == "ATEM_RUN_MACRO"){
         runningMacro = macroList.find((item)=>item.name == data.data[0].value);    
         if(!runningMacro){
             console.log(`Macro ${data.data[0].value} not found!`);
             return;
         }
-        myAtem.macroRun(runningMacro.index).then(() => {
+        await myAtem.macroRun(runningMacro.index).then(() => {
             // Fired once the atem has acknowledged the command
             // Note: the state likely hasnt updated yet, but will follow shortly
             console.log(`Started running macro ${runningMacro.name}`);
@@ -170,6 +172,7 @@ TPClient.on("Action", (data) => {
                 
         })
     }
+
     if(data.actionId == "ATEM_PAUSE_MACRO"){
         console.log("Received pause macro...")
         if(!runningMacro){
@@ -179,7 +182,7 @@ TPClient.on("Action", (data) => {
         let func = null;
         if(myAtem.state.macro.macroPlayer.isRunning){
             console.log("Pausing macro...")
-            myAtem.macroStop().then(()=>{
+            await myAtem.macroStop().then(()=>{
                 bIsRunning = myAtem.state.macro.macroPlayer.isRunning;
                 bIsWaiting = myAtem.state.macro.macroPlayer.isWaiting;
                 let states=[
@@ -190,7 +193,7 @@ TPClient.on("Action", (data) => {
         }
         else{
             console.log("Resuming macro...")
-            myAtem.macroContinue().then(()=>{
+            await myAtem.macroContinue().then(()=>{
                 let states=[
                     {id: "ATEM_RUNNING_MACRO", value: runningMacro.name},
                     {id:"ATEM_MACRO_IS_RUNNING", value: `${myAtem.state.macro.macroPlayer.isRunning}`}
@@ -199,9 +202,10 @@ TPClient.on("Action", (data) => {
             })
         }
     }  
+
     if(data.actionId == "ATEM_TOGGLE_MACRO_LOOP"){
         console.log("Recieved set macro loop...")
-        myAtem.macroSetLoop(!myAtem.state.macro.macroPlayer.loop).then(()=>{
+        await myAtem.macroSetLoop(!myAtem.state.macro.macroPlayer.loop).then(()=>{
             let states=[
                 {id:"ATEM_MACRO_LOOP", value: `${myAtem.state.macro.macroPlayer.loop}`}
             ];
@@ -232,7 +236,7 @@ TPClient.on("ListChange",(data) => {
 
 // After join to Touch Portal, it sends an info message
 // handle it here
-TPClient.on("Info",(data) => {
+TPClient.on("Info", async (data) => {
     //console.log(data);
     return;
     //Do something with the Info message here
@@ -257,7 +261,7 @@ TPClient.on("Info",(data) => {
 
             if(prop == "AtemIP"){
                 console.log("Connectiong to atem on "+ data.settings[i][prop] + "...");
-                myAtem.connect(data.settings[i][prop]);
+                await myAtem.connect(data.settings[i][prop]);
 
                 atem_found = true;
 
@@ -277,7 +281,7 @@ TPClient.on("Info",(data) => {
 
 });
 
-TPClient.on("Settings",(data) => {
+TPClient.on("Settings", async (data) => {
 
     //Do something with the Settings message here
     // Note: this can be called any time settings are modified or saved in the TouchPortal Settings window.
@@ -296,7 +300,7 @@ TPClient.on("Settings",(data) => {
 
             if(prop == "AtemIP"){
                 console.log("Connectiong to atem on "+ data[i][prop] + "...");
-                myAtem.connect(data[i][prop]);
+                await myAtem.connect(data[i][prop]);
 
                 atem_found = true;
 
@@ -317,3 +321,27 @@ TPClient.on("Update", (curVersion, newVersion) => {
 
 //Connects and Pairs to Touch Portal via Sockete
 TPClient.connect({ pluginId });
+
+function waitForStateEnd(stateName) {
+    return new Promise((resolve) => {
+        const intervalId = setInterval(() => {
+        switch (stateName) {
+            case 'transition':
+            if (!myAtem.state.video.mixEffects[0].transitionPosition.inTransition) {
+                clearInterval(intervalId);
+                resolve();
+            }
+            break;
+            case 'FTB':
+            if (!myAtem.state.video.mixEffects[0].fadeToBlack.inTransition) {
+                clearInterval(intervalId);
+                resolve();
+            }
+            break;
+            // Add more cases for other states as needed
+            default:
+            throw new Error(`Unsupported state: ${stateName}`);
+        }
+        }, 100); // check every 100ms
+    });
+}

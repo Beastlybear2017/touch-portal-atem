@@ -35,10 +35,62 @@
                 "5",
                 "6",
                 "7",
-                "8"
+                "8",
+                "Black"
               ]
             }
           ]
+        },
+        {
+          "id":"ATEM_SWITCH_PVW",
+          "prefix":"Switch the Preview on the ATEM:",
+          "name":"Switch Preview",
+          "tryInline":true,
+          "format":"Switch the preview on the ATEM to {$source$}",
+          "type":"communicate",
+          "data": [
+            {
+              "id":"source",
+              "type":"choice",
+              "label":"Source",
+              "default":"1",
+              "valueChoices": [
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "Black"
+              ]
+            }
+          ]
+        },
+        {
+          "id":"ATEM_AUTO_TRANSITION",
+          "prefix":"Transition:",
+          "name":"Transition",
+          "tryInline":true,
+          "format":"Transition the preview to program",
+          "type":"communicate",
+        },
+        {
+          "id":"ATEM_FTB",
+          "prefix":"Fade to Black:",
+          "name":"Fade to Black",
+          "tryInline":true,
+          "format":"Fade to Black",
+          "type":"communicate",
+        },
+        {
+          "id":"ATEM_CUT",
+          "prefix":"Cut to the preview:",
+          "name":"Cut to the preview",
+          "tryInline":true,
+          "format":"Cut to the preview",
+          "type":"communicate",
         }
       ],
       "events": [
@@ -56,9 +108,29 @@
             "5",
             "6",
             "7",
-            "8"
+            "8",
+            "Black"
           ],
           "valueStateId":"ATEM_SOURCE"
+        },
+        {
+          "id":"event_atem_pvw_ src_changed",
+          "name":"When ATEM preview is selected",
+          "format":"When the ATEM preview is $val",
+          "type":"communicate",
+          "valueType":"choice",
+          "valueChoices":[
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "Black"
+          ],
+          "valueStateId":"ATEM_PVW"
         }
       ],
       "states": [
@@ -75,7 +147,45 @@
             "5",
             "6",
             "7",
-            "8"
+            "8",
+            "Black"
+          ]
+        },
+        {
+          "id":"ATEM_PVW",
+          "type":"choice",
+          "desc":"ATEM PREVIEW",
+          "default":"1",
+          "valueChoices": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "Black"
+          ]
+        },
+        {
+          "id":"ATEM_TRANSITION_STATE",
+          "type":"choice",
+          "desc":"ATEM Transition State",
+          "default":"false",
+          "valueChoices": [
+            "fasle",
+            "true"
+          ]
+        },
+        {
+          "id":"ATEM_FTB",
+          "type":"choice",
+          "desc":"ATEM Fade to Black",
+          "default":"false",
+          "valueChoices": [
+            "fasle",
+            "true"
           ]
         }
       ]
